@@ -238,16 +238,32 @@ def run_research_workflow() -> bool:
         with open(notebook_path) as f:
             nb = nbformat.read(f, as_version=4)
         
-        # Ensure each code cell has an outputs field
+        # Create a new notebook with proper structure
+        new_nb = nbformat.v4.new_notebook()
+        new_nb.metadata = nb.metadata
+        
+        # Copy cells with proper structure
         for cell in nb.cells:
             if cell.cell_type == 'code':
-                if 'outputs' not in cell:
-                    cell['outputs'] = []
+                new_cell = nbformat.v4.new_code_cell(
+                    source=cell.source,
+                    outputs=[],
+                    execution_count=None,
+                    metadata=cell.metadata
+                )
+                new_nb.cells.append(new_cell)
+            else:
+                new_nb.cells.append(cell)
         
         # Execute notebook
         logger.info("Executing orchestrator notebook")
         ep = ExecutePreprocessor(timeout=600, kernel_name='python3')
-        ep.preprocess(nb, {'metadata': {'path': str(notebook_path.parent)}})
+        ep.preprocess(new_nb, {'metadata': {'path': str(notebook_path.parent)}})
+        
+        # Save the executed notebook for debugging
+        debug_path = OUTPUTS_DIR / 'debug_orchestrator.ipynb'
+        with open(debug_path, 'w', encoding='utf-8') as f:
+            nbformat.write(new_nb, f)
         
         logger.info("Research workflow completed successfully")
         load_results.cache_clear()  # Clear cached results
