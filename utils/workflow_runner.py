@@ -155,17 +155,26 @@ class WorkflowRunner:
                         current_class = [source]
                     elif in_class:
                         # If this cell has class-related code (methods, properties)
-                        if source.strip().startswith('def ') or source.strip().startswith('@'):
+                        if source.strip().startswith('def ') or source.strip().startswith('@') or not source.strip():
                             current_class.append(source)
                         else:
-                            # End of class definition
-                            if current_class:
-                                class_cells.append('\n'.join(current_class))
-                                current_class = []
-                            in_class = False
-                            if source.strip():
-                                main_cells.append(source)
+                            # Only end class if we have a non-empty line that's not a method
+                            if source.strip() and not source.strip().startswith('def '):
+                                # End of class definition
+                                if current_class:
+                                    class_cells.append('\n'.join(current_class))
+                                    current_class = []
+                                in_class = False
+                                if source.strip():
+                                    main_cells.append(source)
                     else:
+                        # Add functions to class if they're methods
+                        if source.strip().startswith('def '):
+                            method_name = source.split('(')[1].split(')')[0].strip()
+                            if 'self' in method_name:
+                                if current_class:
+                                    current_class.append(source)
+                                continue
                         if source.strip():
                             main_cells.append(source)
             
@@ -214,7 +223,7 @@ class WorkflowRunner:
                 main_code.extend([
                     "        # Run data analysis",
                     "        analyzer = DataAnalyzer()",
-                    "        results = analyzer.analyze_dataset()",
+                    "        results = analyzer.analyze_experimental_data()",
                     "        logger.info(f'Analysis results: {results}')"
                 ])
             elif "visualizer" in notebook_path.stem:

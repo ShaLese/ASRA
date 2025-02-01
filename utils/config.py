@@ -27,6 +27,9 @@ MODEL_CONFIGS = {
         "bert_model": "bert-base-uncased",
         "specter_model": "allenai/specter",
     },
+    "hypothesis_generator": {
+        "model": "deepseek-ai/deepseek-coder-6.7b-instruct",
+    },
     "data_analysis": {
         "tabnet_params": {
             "n_d": 8,
