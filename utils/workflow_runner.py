@@ -6,13 +6,12 @@ and running them in a controlled environment.
 
 import sys
 import os
+import json
 from pathlib import Path
-import nbformat
 import logging
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
-import json
 import traceback
 
 logger = logging.getLogger(__name__)
@@ -26,23 +25,29 @@ class WorkflowRunner:
     def notebook_to_script(self, notebook_path: Path) -> Path:
         """Convert a Jupyter notebook to a Python script."""
         try:
-            # Read notebook
+            # Read notebook as JSON
             with open(notebook_path) as f:
-                nb = nbformat.read(f, as_version=4)
+                nb = json.load(f)
             
             # Extract code cells and fix indentation
             code_cells = []
-            for cell in nb.cells:
-                if cell.cell_type == 'code':
+            for cell in nb.get('cells', []):
+                if cell.get('cell_type') == 'code':
+                    source = cell.get('source', '')
+                    if isinstance(source, list):
+                        source = ''.join(source)
+                    
                     # Remove any common leading whitespace
-                    lines = cell.source.splitlines()
+                    lines = source.splitlines()
                     if lines:
                         # Find minimum indentation
-                        indents = [len(line) - len(line.lstrip()) for line in lines if line.strip()]
+                        indents = [len(line) - len(line.lstrip()) 
+                                 for line in lines if line.strip()]
                         if indents:
                             min_indent = min(indents)
                             # Remove common indentation
-                            lines = [line[min_indent:] if line.strip() else line for line in lines]
+                            lines = [line[min_indent:] if line.strip() else line 
+                                   for line in lines]
                         code_cells.append('\n'.join(lines))
             
             # Create script content with proper imports and indentation
