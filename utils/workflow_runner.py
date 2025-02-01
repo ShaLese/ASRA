@@ -63,6 +63,8 @@ class WorkflowRunner:
                 "from tqdm import tqdm",
                 "import matplotlib.pyplot as plt",
                 "import seaborn as sns",
+                "import torch",
+                "from transformers import AutoTokenizer, AutoModel",
             ]
             
             setup = [
@@ -92,6 +94,36 @@ class WorkflowRunner:
                 "",
             ]
             
+            # Add model initialization based on notebook type
+            model_init = []
+            if "literature_review" in notebook_path.stem:
+                model_init = [
+                    "# Initialize models",
+                    "device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')",
+                    "",
+                    "# BERT for text analysis",
+                    "bert_name = MODEL_CONFIGS['literature_review']['bert_model']",
+                    "bert_tokenizer = AutoTokenizer.from_pretrained(bert_name)",
+                    "bert_model = AutoModel.from_pretrained(bert_name).to(device)",
+                    "",
+                    "# SPECTER for citation analysis",
+                    "specter_name = MODEL_CONFIGS['literature_review']['specter_model']",
+                    "specter_tokenizer = AutoTokenizer.from_pretrained(specter_name)",
+                    "specter_model = AutoModel.from_pretrained(specter_name).to(device)",
+                    "",
+                ]
+            elif "hypothesis_generator" in notebook_path.stem:
+                model_init = [
+                    "# Initialize models",
+                    "device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')",
+                    "",
+                    "# Load language model",
+                    "model_name = MODEL_CONFIGS['hypothesis_generator']['model']",
+                    "tokenizer = AutoTokenizer.from_pretrained(model_name)",
+                    "model = AutoModel.from_pretrained(model_name).to(device)",
+                    "",
+                ]
+            
             # Extract code cells and fix indentation
             class_cells = []
             main_cells = []
@@ -106,6 +138,10 @@ class WorkflowRunner:
                     
                     # Skip empty cells and imports
                     if not source.strip() or source.strip().startswith('import ') or source.strip().startswith('from '):
+                        continue
+                    
+                    # Skip model initialization as we handle it separately
+                    if any(x in source for x in ['device = torch.device', 'bert_tokenizer', 'specter_tokenizer']):
                         continue
                     
                     # Check if this cell contains a class definition
@@ -202,6 +238,7 @@ class WorkflowRunner:
             script_content = '\n\n'.join([
                 '\n'.join(imports),
                 '\n'.join(setup),
+                '\n'.join(model_init) if model_init else '',
                 class_code,
                 '\n'.join(main_code + footer)
             ])
