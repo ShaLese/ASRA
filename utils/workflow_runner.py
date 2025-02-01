@@ -106,6 +106,44 @@ class WorkflowRunner:
                                     for code in code_cells
                                     for line in code.splitlines())
             
+            # Add execution code based on notebook name
+            execution_code = []
+            if "orchestrator" in notebook_path.stem:
+                execution_code = [
+                    "        # Run orchestrator",
+                    "        orchestrator = ResearchOrchestrator()",
+                    "        results = orchestrator.run_research_workflow()",
+                    "        logger.info(f'Workflow results: {results}')"
+                ]
+            elif "literature_review" in notebook_path.stem:
+                execution_code = [
+                    "        # Run literature review",
+                    "        reviewer = LiteratureReviewer()",
+                    "        results = reviewer.analyze_papers()",
+                    "        logger.info(f'Literature review results: {results}')"
+                ]
+            elif "hypothesis_generator" in notebook_path.stem:
+                execution_code = [
+                    "        # Run hypothesis generation",
+                    "        generator = HypothesisGenerator()",
+                    "        results = generator.generate_hypotheses()",
+                    "        logger.info(f'Generated hypotheses: {results}')"
+                ]
+            elif "data_analyzer" in notebook_path.stem:
+                execution_code = [
+                    "        # Run data analysis",
+                    "        analyzer = DataAnalyzer()",
+                    "        results = analyzer.analyze_data()",
+                    "        logger.info(f'Analysis results: {results}')"
+                ]
+            elif "visualizer" in notebook_path.stem:
+                execution_code = [
+                    "        # Run visualization",
+                    "        visualizer = ResearchVisualizer()",
+                    "        results = visualizer.create_visualizations()",
+                    "        logger.info(f'Visualization results: {results}')"
+                ]
+            
             footer = [
                 "    except Exception as e:",
                 "        logger.error(f'Error in {__file__}: {str(e)}\\n{traceback.format_exc()}')",
@@ -116,7 +154,7 @@ class WorkflowRunner:
             ]
             
             # Combine all parts
-            script_content = '\n'.join(imports + setup + [indented_code] + footer)
+            script_content = '\n'.join(imports + setup + [indented_code] + execution_code + footer)
             
             # Save script
             script_path = self.script_dir / f"{notebook_path.stem}.py"
