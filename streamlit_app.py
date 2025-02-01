@@ -7,6 +7,7 @@ import json
 import pandas as pd
 from PIL import Image
 from utils.config import OUTPUTS_DIR, RESEARCH_PAPERS_DIR, EXPERIMENTAL_DATA_DIR
+from utils.workflow_runner import WorkflowRunner
 import nbformat
 from nbconvert.preprocessors import ExecutePreprocessor
 import logging
@@ -234,48 +235,39 @@ def run_research_workflow() -> bool:
     """Execute the research workflow with proper logging."""
     logger.info("Starting research workflow")
     try:
-        # Create a Python script from the notebook
-        notebook_path = Path(__file__).parent / 'agents' / 'orchestrator.ipynb'
-        script_path = OUTPUTS_DIR / 'orchestrator_script.py'
+        # Initialize workflow runner
+        runner = WorkflowRunner(OUTPUTS_DIR)
         
-        with open(notebook_path) as f:
-            nb = nbformat.read(f, as_version=4)
+        # Get all notebook paths
+        agents_dir = Path(__file__).parent / 'agents'
+        notebook_paths = [
+            agents_dir / 'orchestrator.ipynb',
+            agents_dir / 'literature_review.ipynb',
+            agents_dir / 'hypothesis_generator.ipynb',
+            agents_dir / 'data_analyzer.ipynb',
+            agents_dir / 'visualizer.ipynb'
+        ]
         
-        # Extract code from notebook
-        code_cells = []
-        for cell in nb.cells:
-            if cell.cell_type == 'code':
-                code_cells.append(cell.source)
+        # Run workflow
+        results = runner.run_workflow(notebook_paths)
         
-        # Write code to Python script
-        script_content = "\n\n".join([
-            "import sys",
-            "from pathlib import Path",
-            "sys.path.append(str(Path(__file__).parent.parent))",
-            "\n".join(code_cells)
-        ])
-        
-        with open(script_path, 'w', encoding='utf-8') as f:
-            f.write(script_content)
-        
-        # Execute the script
-        logger.info("Executing research workflow script")
-        import subprocess
-        result = subprocess.run(
-            [sys.executable, str(script_path)],
-            cwd=str(notebook_path.parent),
-            capture_output=True,
-            text=True
-        )
-        
-        if result.returncode != 0:
-            logger.error(f"Script execution failed:\n{result.stderr}")
+        # Check for errors
+        if 'error' in results:
+            logger.error(f"Workflow failed:\n{results['error']}\n{results['traceback']}")
             return False
             
-        logger.info(f"Script output:\n{result.stdout}")
-        logger.info("Research workflow completed successfully")
-        load_results.cache_clear()  # Clear cached results
-        return True
+        # Log results
+        for name, result in results.items():
+            if result['success']:
+                logger.info(f"{name} completed successfully")
+            else:
+                logger.error(f"{name} failed: {result['output']}")
+        
+        # Clear results cache
+        load_results.cache_clear()
+        
+        # Return True if orchestrator succeeded
+        return results.get('orchestrator', {}).get('success', False)
         
     except Exception as e:
         logger.error(f"Error running workflow: {str(e)}\n{traceback.format_exc()}")
