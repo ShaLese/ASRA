@@ -5,6 +5,7 @@ and running them in a controlled environment.
 """
 
 import sys
+import os
 from pathlib import Path
 import nbformat
 import logging
@@ -38,9 +39,26 @@ class WorkflowRunner:
             # Create script content with proper imports
             script_content = "\n\n".join([
                 "import sys",
+                "import os",
+                "import json",
+                "import logging",
+                "import traceback",
                 "from pathlib import Path",
-                "sys.path.append(str(Path(__file__).parent.parent))",
-                "\n".join(code_cells)
+                "from datetime import datetime",
+                "from typing import Dict, List, Optional",
+                "",
+                "# Add project root to path",
+                "project_root = Path(__file__).parent.parent",
+                "sys.path.append(str(project_root))",
+                "",
+                "# Setup logging",
+                "logger = logging.getLogger(__name__)",
+                "",
+                "try:",
+                "\n".join(code_cells),
+                "except Exception as e:",
+                "    logger.error(f'Error in {__file__}: {str(e)}\\n{traceback.format_exc()}')",
+                "    raise"
             ])
             
             # Save script
@@ -61,16 +79,17 @@ class WorkflowRunner:
             if cwd is None:
                 cwd = script_path.parent
                 
+            # Prepare environment
+            env = os.environ.copy()
+            env['PYTHONPATH'] = str(script_path.parent.parent)
+                
             # Run script with proper environment
             result = subprocess.run(
                 [sys.executable, str(script_path)],
                 cwd=str(cwd),
                 capture_output=True,
                 text=True,
-                env={
-                    **dict(os.environ),
-                    'PYTHONPATH': str(script_path.parent.parent)
-                }
+                env=env
             )
             
             # Process result
@@ -84,10 +103,11 @@ class WorkflowRunner:
             }
             
         except Exception as e:
-            logger.error(f"Error running script {script_path}: {str(e)}")
+            error_msg = f"Error running script {script_path}: {str(e)}\n{traceback.format_exc()}"
+            logger.error(error_msg)
             return {
                 'success': False,
-                'output': str(e),
+                'output': error_msg,
                 'script': str(script_path)
             }
     
@@ -103,9 +123,10 @@ class WorkflowRunner:
                     script_path = self.notebook_to_script(nb_path)
                     script_paths.append(script_path)
                 except Exception as e:
+                    error_msg = f"Conversion failed: {str(e)}\n{traceback.format_exc()}"
                     results[nb_path.stem] = {
                         'success': False,
-                        'output': f"Conversion failed: {str(e)}",
+                        'output': error_msg,
                         'script': None
                     }
             
@@ -122,17 +143,19 @@ class WorkflowRunner:
                         result = future.result()
                         results[script_path.stem] = result
                     except Exception as e:
+                        error_msg = f"Execution failed: {str(e)}\n{traceback.format_exc()}"
                         results[script_path.stem] = {
                             'success': False,
-                            'output': f"Execution failed: {str(e)}",
+                            'output': error_msg,
                             'script': str(script_path)
                         }
             
             return results
             
         except Exception as e:
-            logger.error(f"Error running workflow: {str(e)}\n{traceback.format_exc()}")
+            error_msg = f"Error running workflow: {str(e)}\n{traceback.format_exc()}"
+            logger.error(error_msg)
             return {
-                'error': str(e),
+                'error': error_msg,
                 'traceback': traceback.format_exc()
             }
