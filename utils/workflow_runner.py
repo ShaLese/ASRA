@@ -29,6 +29,21 @@ class WorkflowRunner:
             with open(notebook_path) as f:
                 nb = json.load(f)
             
+            # Create utils directory in scripts dir
+            scripts_utils_dir = self.script_dir / 'utils'
+            scripts_utils_dir.mkdir(exist_ok=True)
+            
+            # Copy utils modules to script directory
+            project_utils = Path(__file__).parent
+            for module in ['__init__.py', 'config.py', 'helpers.py']:
+                src = project_utils / module
+                dst = scripts_utils_dir / module
+                if src.exists():
+                    with open(src, 'r') as f:
+                        content = f.read()
+                    with open(dst, 'w') as f:
+                        f.write(content)
+            
             # Extract code cells and fix indentation
             code_cells = []
             for cell in nb.get('cells', []):
@@ -64,35 +79,22 @@ class WorkflowRunner:
             
             setup = [
                 "",
-                "# Setup basic logging first in case module imports fail",
+                "# Setup basic logging first",
                 "logging.basicConfig(",
                 "    level=logging.INFO,",
                 "    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'",
                 ")",
                 "logger = logging.getLogger(__name__)",
                 "",
-                "# Add project root to path",
-                "script_dir = Path(__file__).resolve().parent",
-                "project_root = script_dir.parent.parent",
-                "",
-                "# Add all possible module locations to path",
-                "possible_paths = [",
-                "    project_root,",
-                "    project_root.parent,",
-                "    script_dir.parent,",
-                "]",
-                "",
-                "for path in possible_paths:",
-                "    if path.exists() and str(path) not in sys.path:",
-                "        sys.path.insert(0, str(path))",
-                "",
-                "# Try to import ASRA modules",
                 "try:",
-                "    from utils.config import setup_logging, OUTPUTS_DIR",
+                "    # Import local utils modules",
+                "    from utils.config import setup_logging, OUTPUTS_DIR, RESEARCH_PAPERS_DIR, EXPERIMENTAL_DATA_DIR, MODEL_CONFIGS, DEEPSEEK_API_KEY",
+                "    from utils.helpers import *",
+                "    ",
+                "    # Setup logging",
                 "    logger = setup_logging()",
-                "    logger.info('Successfully imported ASRA modules')",
-                "except ImportError as e:",
-                "    logger.error(f'Failed to import ASRA modules: {e}\\n{traceback.format_exc()}')",
+                "except Exception as e:",
+                "    logger.error(f'Failed to import modules: {e}\\n{traceback.format_exc()}')",
                 "    sys.exit(1)",
                 "",
                 "def main():",
