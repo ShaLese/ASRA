@@ -234,43 +234,45 @@ def run_research_workflow() -> bool:
     """Execute the research workflow with proper logging."""
     logger.info("Starting research workflow")
     try:
-        # Load orchestrator notebook
+        # Create a Python script from the notebook
         notebook_path = Path(__file__).parent / 'agents' / 'orchestrator.ipynb'
+        script_path = OUTPUTS_DIR / 'orchestrator_script.py'
+        
         with open(notebook_path) as f:
             nb = nbformat.read(f, as_version=4)
         
-        # Normalize and validate the notebook
-        nb = nbformat.v4.upgrade(nb, from_version=nb.nbformat, from_minor=nb.nbformat_minor)
-        nb = nbformat.v4.normalize(nb)
-        nbformat.validate(nb)
-        
-        # Ensure all code cells have required fields
+        # Extract code from notebook
+        code_cells = []
         for cell in nb.cells:
             if cell.cell_type == 'code':
-                if not hasattr(cell, 'outputs'):
-                    cell.outputs = []
-                if not hasattr(cell, 'execution_count'):
-                    cell.execution_count = None
-                if not hasattr(cell, 'metadata'):
-                    cell.metadata = {}
+                code_cells.append(cell.source)
         
-        # Execute notebook
-        logger.info("Executing orchestrator notebook")
-        ep = ExecutePreprocessor(timeout=600, kernel_name='python3')
+        # Write code to Python script
+        script_content = "\n\n".join([
+            "import sys",
+            "from pathlib import Path",
+            "sys.path.append(str(Path(__file__).parent.parent))",
+            "\n".join(code_cells)
+        ])
         
-        # Save a copy of the notebook before execution for debugging
-        pre_exec_path = OUTPUTS_DIR / 'pre_exec_orchestrator.ipynb'
-        with open(pre_exec_path, 'w', encoding='utf-8') as f:
-            nbformat.write(nb, f)
+        with open(script_path, 'w', encoding='utf-8') as f:
+            f.write(script_content)
+        
+        # Execute the script
+        logger.info("Executing research workflow script")
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, str(script_path)],
+            cwd=str(notebook_path.parent),
+            capture_output=True,
+            text=True
+        )
+        
+        if result.returncode != 0:
+            logger.error(f"Script execution failed:\n{result.stderr}")
+            return False
             
-        # Execute the notebook
-        ep.preprocess(nb, {'metadata': {'path': str(notebook_path.parent)}})
-        
-        # Save the executed notebook for debugging
-        post_exec_path = OUTPUTS_DIR / 'post_exec_orchestrator.ipynb'
-        with open(post_exec_path, 'w', encoding='utf-8') as f:
-            nbformat.write(nb, f)
-        
+        logger.info(f"Script output:\n{result.stdout}")
         logger.info("Research workflow completed successfully")
         load_results.cache_clear()  # Clear cached results
         return True
