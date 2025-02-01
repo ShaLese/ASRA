@@ -17,6 +17,7 @@ from typing import List, Dict, Union, Tuple
 from datetime import datetime
 from functools import lru_cache
 import hashlib
+import traceback
 
 # Setup page config
 st.set_page_config(
@@ -238,39 +239,44 @@ def run_research_workflow() -> bool:
         with open(notebook_path) as f:
             nb = nbformat.read(f, as_version=4)
         
-        # Create a new notebook with proper structure
-        new_nb = nbformat.v4.new_notebook()
-        new_nb.metadata = nb.metadata
+        # Normalize and validate the notebook
+        nb = nbformat.v4.upgrade(nb, from_version=nb.nbformat, from_minor=nb.nbformat_minor)
+        nb = nbformat.v4.normalize(nb)
+        nbformat.validate(nb)
         
-        # Copy cells with proper structure
+        # Ensure all code cells have required fields
         for cell in nb.cells:
             if cell.cell_type == 'code':
-                new_cell = nbformat.v4.new_code_cell(
-                    source=cell.source,
-                    outputs=[],
-                    execution_count=None,
-                    metadata=cell.metadata
-                )
-                new_nb.cells.append(new_cell)
-            else:
-                new_nb.cells.append(cell)
+                if not hasattr(cell, 'outputs'):
+                    cell.outputs = []
+                if not hasattr(cell, 'execution_count'):
+                    cell.execution_count = None
+                if not hasattr(cell, 'metadata'):
+                    cell.metadata = {}
         
         # Execute notebook
         logger.info("Executing orchestrator notebook")
         ep = ExecutePreprocessor(timeout=600, kernel_name='python3')
-        ep.preprocess(new_nb, {'metadata': {'path': str(notebook_path.parent)}})
+        
+        # Save a copy of the notebook before execution for debugging
+        pre_exec_path = OUTPUTS_DIR / 'pre_exec_orchestrator.ipynb'
+        with open(pre_exec_path, 'w', encoding='utf-8') as f:
+            nbformat.write(nb, f)
+            
+        # Execute the notebook
+        ep.preprocess(nb, {'metadata': {'path': str(notebook_path.parent)}})
         
         # Save the executed notebook for debugging
-        debug_path = OUTPUTS_DIR / 'debug_orchestrator.ipynb'
-        with open(debug_path, 'w', encoding='utf-8') as f:
-            nbformat.write(new_nb, f)
+        post_exec_path = OUTPUTS_DIR / 'post_exec_orchestrator.ipynb'
+        with open(post_exec_path, 'w', encoding='utf-8') as f:
+            nbformat.write(nb, f)
         
         logger.info("Research workflow completed successfully")
         load_results.cache_clear()  # Clear cached results
         return True
         
     except Exception as e:
-        logger.error(f"Error running workflow: {str(e)}")
+        logger.error(f"Error running workflow: {str(e)}\n{traceback.format_exc()}")
         return False
 
 def clear_all_data() -> Tuple[bool, str]:
