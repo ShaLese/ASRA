@@ -235,11 +235,15 @@ def run_research_workflow() -> bool:
     """Execute the research workflow with proper logging."""
     logger.info("Starting research workflow")
     try:
-        # Initialize workflow runner
-        runner = WorkflowRunner(OUTPUTS_DIR)
+        # Initialize workflow runner with absolute paths
+        base_dir = Path(__file__).resolve().parent
+        outputs_dir = base_dir / 'data' / 'outputs'
+        outputs_dir.mkdir(parents=True, exist_ok=True)
         
-        # Get all notebook paths
-        agents_dir = Path(__file__).parent / 'agents'
+        runner = WorkflowRunner(outputs_dir)
+        
+        # Get all notebook paths using absolute paths
+        agents_dir = base_dir / 'agents'
         notebook_paths = [
             agents_dir / 'orchestrator.ipynb',
             agents_dir / 'literature_review.ipynb',
@@ -248,20 +252,27 @@ def run_research_workflow() -> bool:
             agents_dir / 'visualizer.ipynb'
         ]
         
+        # Ensure all paths exist
+        missing_notebooks = [p for p in notebook_paths if not p.exists()]
+        if missing_notebooks:
+            logger.error(f"Missing notebooks: {missing_notebooks}")
+            return False
+        
         # Run workflow
         results = runner.run_workflow(notebook_paths)
         
         # Check for errors
-        if 'error' in results:
-            logger.error(f"Workflow failed:\n{results['error']}\n{results['traceback']}")
+        if isinstance(results, dict) and 'error' in results:
+            logger.error(f"Workflow failed:\n{results['error']}\n{results.get('traceback', '')}")
             return False
             
         # Log results
         for name, result in results.items():
-            if result['success']:
-                logger.info(f"{name} completed successfully")
-            else:
-                logger.error(f"{name} failed: {result['output']}")
+            if isinstance(result, dict):
+                if result.get('success'):
+                    logger.info(f"{name} completed successfully")
+                else:
+                    logger.error(f"{name} failed: {result.get('output', 'Unknown error')}")
         
         # Clear results cache
         load_results.cache_clear()

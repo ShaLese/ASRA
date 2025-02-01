@@ -38,7 +38,7 @@ MODEL_CONFIGS = {
         }
     },
     "visualization": {
-        "stable_diffusion_model": "stabilityai/stable-diffusion-2-1",
+        "stable_diffusion_model": "stabilityai/sd-v1-5",
     }
 }
 

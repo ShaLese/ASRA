@@ -45,6 +45,12 @@ class WorkflowRunner:
                 if src.exists():
                     with open(src, 'r') as f:
                         content = f.read()
+                    # Fix paths in config.py
+                    if module == 'config.py':
+                        content = content.replace(
+                            'BASE_DIR = Path(__file__).resolve().parent.parent',
+                            'BASE_DIR = Path(__file__).resolve().parent.parent.parent'
+                        )
                     with open(dst, 'w') as f:
                         f.write(content)
             
@@ -78,11 +84,12 @@ class WorkflowRunner:
                 "",
                 "# Create outputs directory",
                 "SCRIPT_DIR = Path(__file__).resolve().parent",
-                "OUTPUTS_DIR = SCRIPT_DIR / 'data' / 'outputs'",
+                "OUTPUTS_DIR = SCRIPT_DIR.parent / 'data' / 'outputs'",
                 "OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)",
                 "",
                 "try:",
                 "    # Import local utils modules",
+                "    sys.path.append(str(Path(__file__).resolve().parent))",
                 "    from utils.config import setup_logging, OUTPUTS_DIR, RESEARCH_PAPERS_DIR, EXPERIMENTAL_DATA_DIR, MODEL_CONFIGS, DEEPSEEK_API_KEY",
                 "    from utils.helpers import *",
                 "    ",
