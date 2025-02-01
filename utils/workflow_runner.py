@@ -33,6 +33,10 @@ class WorkflowRunner:
             scripts_utils_dir = self.script_dir / 'utils'
             scripts_utils_dir.mkdir(exist_ok=True)
             
+            # Create outputs directory
+            outputs_dir = self.script_dir / 'data' / 'outputs'
+            outputs_dir.mkdir(parents=True, exist_ok=True)
+            
             # Copy utils modules to script directory
             project_utils = Path(__file__).parent
             for module in ['__init__.py', 'config.py', 'helpers.py']:
@@ -45,25 +49,27 @@ class WorkflowRunner:
                         f.write(content)
             
             # Extract code cells and fix indentation
-            code_cells = []
+            class_cells = []
+            main_cells = []
+            in_class = False
+            
             for cell in nb.get('cells', []):
                 if cell.get('cell_type') == 'code':
                     source = cell.get('source', '')
                     if isinstance(source, list):
                         source = ''.join(source)
                     
-                    # Remove any common leading whitespace
-                    lines = source.splitlines()
-                    if lines:
-                        # Find minimum indentation
-                        indents = [len(line) - len(line.lstrip()) 
-                                 for line in lines if line.strip()]
-                        if indents:
-                            min_indent = min(indents)
-                            # Remove common indentation
-                            lines = [line[min_indent:] if line.strip() else line 
-                                   for line in lines]
-                        code_cells.append('\n'.join(lines))
+                    # Check if this cell contains a class definition
+                    if 'class ' in source:
+                        in_class = True
+                        class_cells.append(source)
+                    else:
+                        if in_class and not source.strip().startswith('def '):
+                            in_class = False
+                        if in_class:
+                            class_cells.append(source)
+                        else:
+                            main_cells.append(source)
             
             # Create script content with proper imports and indentation
             imports = [
@@ -75,6 +81,9 @@ class WorkflowRunner:
                 "from pathlib import Path",
                 "from datetime import datetime",
                 "from typing import Dict, List, Optional",
+                "import pandas as pd",
+                "import numpy as np",
+                "from tqdm import tqdm",
             ]
             
             setup = [
@@ -97,52 +106,57 @@ class WorkflowRunner:
                 "    logger.error(f'Failed to import modules: {e}\\n{traceback.format_exc()}')",
                 "    sys.exit(1)",
                 "",
-                "def main():",
-                "    try:",
             ]
             
-            # Indent the code cells
-            indented_code = '\n'.join('        ' + line if line.strip() else line
-                                    for code in code_cells
-                                    for line in code.splitlines())
+            # Add class definitions
+            class_code = '\n'.join(class_cells)
+            
+            # Add main function with proper indentation
+            main_code = []
+            main_code.append("def main():")
+            main_code.append("    try:")
+            
+            # Indent the main code cells
+            main_code.extend('        ' + line if line.strip() else line
+                           for code in main_cells
+                           for line in code.splitlines())
             
             # Add execution code based on notebook name
-            execution_code = []
             if "orchestrator" in notebook_path.stem:
-                execution_code = [
+                main_code.extend([
                     "        # Run orchestrator",
                     "        orchestrator = ResearchOrchestrator()",
                     "        results = orchestrator.run_research_workflow()",
                     "        logger.info(f'Workflow results: {results}')"
-                ]
+                ])
             elif "literature_review" in notebook_path.stem:
-                execution_code = [
+                main_code.extend([
                     "        # Run literature review",
                     "        reviewer = LiteratureReviewer()",
                     "        results = reviewer.analyze_papers()",
                     "        logger.info(f'Literature review results: {results}')"
-                ]
+                ])
             elif "hypothesis_generator" in notebook_path.stem:
-                execution_code = [
+                main_code.extend([
                     "        # Run hypothesis generation",
                     "        generator = HypothesisGenerator()",
                     "        results = generator.generate_hypotheses()",
                     "        logger.info(f'Generated hypotheses: {results}')"
-                ]
+                ])
             elif "data_analyzer" in notebook_path.stem:
-                execution_code = [
+                main_code.extend([
                     "        # Run data analysis",
                     "        analyzer = DataAnalyzer()",
-                    "        results = analyzer.analyze_data()",
+                    "        results = analyzer.analyze_dataset()",  
                     "        logger.info(f'Analysis results: {results}')"
-                ]
+                ])
             elif "visualizer" in notebook_path.stem:
-                execution_code = [
+                main_code.extend([
                     "        # Run visualization",
                     "        visualizer = ResearchVisualizer()",
                     "        results = visualizer.create_visualizations()",
                     "        logger.info(f'Visualization results: {results}')"
-                ]
+                ])
             
             footer = [
                 "    except Exception as e:",
@@ -154,7 +168,7 @@ class WorkflowRunner:
             ]
             
             # Combine all parts
-            script_content = '\n'.join(imports + setup + [indented_code] + execution_code + footer)
+            script_content = '\n'.join(imports + setup + [class_code] + main_code + footer)
             
             # Save script
             script_path = self.script_dir / f"{notebook_path.stem}.py"
