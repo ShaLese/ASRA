@@ -30,14 +30,23 @@ class WorkflowRunner:
             with open(notebook_path) as f:
                 nb = nbformat.read(f, as_version=4)
             
-            # Extract code cells
-            code_cells = [
-                cell.source for cell in nb.cells 
-                if cell.cell_type == 'code'
-            ]
+            # Extract code cells and fix indentation
+            code_cells = []
+            for cell in nb.cells:
+                if cell.cell_type == 'code':
+                    # Remove any common leading whitespace
+                    lines = cell.source.splitlines()
+                    if lines:
+                        # Find minimum indentation
+                        indents = [len(line) - len(line.lstrip()) for line in lines if line.strip()]
+                        if indents:
+                            min_indent = min(indents)
+                            # Remove common indentation
+                            lines = [line[min_indent:] if line.strip() else line for line in lines]
+                        code_cells.append('\n'.join(lines))
             
-            # Create script content with proper imports
-            script_content = "\n\n".join([
+            # Create script content with proper imports and indentation
+            imports = [
                 "import sys",
                 "import os",
                 "import json",
@@ -46,6 +55,9 @@ class WorkflowRunner:
                 "from pathlib import Path",
                 "from datetime import datetime",
                 "from typing import Dict, List, Optional",
+            ]
+            
+            setup = [
                 "",
                 "# Add project root to path",
                 "project_root = Path(__file__).parent.parent",
@@ -54,12 +66,26 @@ class WorkflowRunner:
                 "# Setup logging",
                 "logger = logging.getLogger(__name__)",
                 "",
-                "try:",
-                "\n".join(code_cells),
-                "except Exception as e:",
-                "    logger.error(f'Error in {__file__}: {str(e)}\\n{traceback.format_exc()}')",
-                "    raise"
-            ])
+                "def main():",
+                "    try:",
+            ]
+            
+            # Indent the code cells
+            indented_code = '\n'.join('        ' + line if line.strip() else line
+                                    for code in code_cells
+                                    for line in code.splitlines())
+            
+            footer = [
+                "    except Exception as e:",
+                "        logger.error(f'Error in {__file__}: {str(e)}\\n{traceback.format_exc()}')",
+                "        raise",
+                "",
+                "if __name__ == '__main__':",
+                "    main()"
+            ]
+            
+            # Combine all parts
+            script_content = '\n'.join(imports + setup + [indented_code] + footer)
             
             # Save script
             script_path = self.script_dir / f"{notebook_path.stem}.py"
