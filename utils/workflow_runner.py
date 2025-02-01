@@ -11,7 +11,7 @@ from pathlib import Path
 import logging
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple, Any, Union
 import traceback
 
 logger = logging.getLogger(__name__)
@@ -48,29 +48,6 @@ class WorkflowRunner:
                     with open(dst, 'w') as f:
                         f.write(content)
             
-            # Extract code cells and fix indentation
-            class_cells = []
-            main_cells = []
-            in_class = False
-            
-            for cell in nb.get('cells', []):
-                if cell.get('cell_type') == 'code':
-                    source = cell.get('source', '')
-                    if isinstance(source, list):
-                        source = ''.join(source)
-                    
-                    # Check if this cell contains a class definition
-                    if 'class ' in source:
-                        in_class = True
-                        class_cells.append(source)
-                    else:
-                        if in_class and not source.strip().startswith('def '):
-                            in_class = False
-                        if in_class:
-                            class_cells.append(source)
-                        else:
-                            main_cells.append(source)
-            
             # Create script content with proper imports and indentation
             imports = [
                 "import sys",
@@ -80,10 +57,12 @@ class WorkflowRunner:
                 "import traceback",
                 "from pathlib import Path",
                 "from datetime import datetime",
-                "from typing import Dict, List, Optional",
+                "from typing import Dict, List, Optional, Tuple, Any, Union",
                 "import pandas as pd",
                 "import numpy as np",
                 "from tqdm import tqdm",
+                "import matplotlib.pyplot as plt",
+                "import seaborn as sns",
             ]
             
             setup = [
@@ -94,6 +73,11 @@ class WorkflowRunner:
                 "    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'",
                 ")",
                 "logger = logging.getLogger(__name__)",
+                "",
+                "# Create outputs directory",
+                "SCRIPT_DIR = Path(__file__).resolve().parent",
+                "OUTPUTS_DIR = SCRIPT_DIR / 'data' / 'outputs'",
+                "OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)",
                 "",
                 "try:",
                 "    # Import local utils modules",
@@ -108,8 +92,53 @@ class WorkflowRunner:
                 "",
             ]
             
-            # Add class definitions
-            class_code = '\n'.join(class_cells)
+            # Extract code cells and fix indentation
+            class_cells = []
+            main_cells = []
+            in_class = False
+            current_class = []
+            
+            for cell in nb.get('cells', []):
+                if cell.get('cell_type') == 'code':
+                    source = cell.get('source', '')
+                    if isinstance(source, list):
+                        source = ''.join(source)
+                    
+                    # Skip empty cells and imports
+                    if not source.strip() or source.strip().startswith('import ') or source.strip().startswith('from '):
+                        continue
+                    
+                    # Check if this cell contains a class definition
+                    if 'class ' in source:
+                        # If we were in a class, add it to class_cells
+                        if current_class:
+                            class_cells.append('\n'.join(current_class))
+                            current_class = []
+                        
+                        in_class = True
+                        current_class = [source]
+                    elif in_class:
+                        # If this cell has class-related code (methods, properties)
+                        if source.strip().startswith('def ') or source.strip().startswith('@'):
+                            current_class.append(source)
+                        else:
+                            # End of class definition
+                            if current_class:
+                                class_cells.append('\n'.join(current_class))
+                                current_class = []
+                            in_class = False
+                            if source.strip():
+                                main_cells.append(source)
+                    else:
+                        if source.strip():
+                            main_cells.append(source)
+            
+            # Add the last class if we were in one
+            if current_class:
+                class_cells.append('\n'.join(current_class))
+            
+            # Add class definitions with proper spacing
+            class_code = '\n\n'.join(class_cells)
             
             # Add main function with proper indentation
             main_code = []
@@ -117,9 +146,11 @@ class WorkflowRunner:
             main_code.append("    try:")
             
             # Indent the main code cells
-            main_code.extend('        ' + line if line.strip() else line
-                           for code in main_cells
-                           for line in code.splitlines())
+            for code in main_cells:
+                # Skip class instantiations as we'll add them later
+                if not any(x in code for x in ['= LiteratureReviewer()', '= HypothesisGenerator()', '= DataAnalyzer()', '= ResearchVisualizer()']):
+                    main_code.extend('        ' + line if line.strip() else line
+                                   for line in code.splitlines())
             
             # Add execution code based on notebook name
             if "orchestrator" in notebook_path.stem:
@@ -147,7 +178,7 @@ class WorkflowRunner:
                 main_code.extend([
                     "        # Run data analysis",
                     "        analyzer = DataAnalyzer()",
-                    "        results = analyzer.analyze_dataset()",  
+                    "        results = analyzer.analyze_dataset()",
                     "        logger.info(f'Analysis results: {results}')"
                 ])
             elif "visualizer" in notebook_path.stem:
@@ -167,8 +198,13 @@ class WorkflowRunner:
                 "    main()"
             ]
             
-            # Combine all parts
-            script_content = '\n'.join(imports + setup + [class_code] + main_code + footer)
+            # Combine all parts with proper spacing
+            script_content = '\n\n'.join([
+                '\n'.join(imports),
+                '\n'.join(setup),
+                class_code,
+                '\n'.join(main_code + footer)
+            ])
             
             # Save script
             script_path = self.script_dir / f"{notebook_path.stem}.py"
