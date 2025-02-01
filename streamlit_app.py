@@ -238,6 +238,12 @@ def run_research_workflow() -> bool:
         with open(notebook_path) as f:
             nb = nbformat.read(f, as_version=4)
         
+        # Ensure each code cell has an outputs field
+        for cell in nb.cells:
+            if cell.cell_type == 'code':
+                if 'outputs' not in cell:
+                    cell['outputs'] = []
+        
         # Execute notebook
         logger.info("Executing orchestrator notebook")
         ep = ExecutePreprocessor(timeout=600, kernel_name='python3')
